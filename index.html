@@ -742,6 +742,8 @@ function manSetSlot(t,dispId,toId){
 }
 var PAT={chestpress:'spinta_o',neutralpress:'spinta_o',incline:'spinta_o',declpress:'spinta_o',fly:'croci',cablefly:'croci',shpress:'spinta_v',arnold:'spinta_v',lateral:'alzata_l',lateral1:'alzata_l',rearfly:'alzata_p',facepull:'alzata_p',latm:'trazione_v',lat1:'trazione_v',pullover:'trazione_v',pulley:'rematore',row1:'rematore',tbar:'rematore',curl2:'curl',curlmach:'curl',preacher:'curl',curl1:'curl',hammer:'curl',revcurl:'curl',wristcurl:'polsi',tri2:'push_tri',tri1:'push_tri',tricmach:'push_tri',overhead:'push_tri',kickback:'push_tri',hack:'squat',legpress:'squat',bulg:'squat',stepup:'squat',rdl:'hinge',rdl1:'hinge',hyper:'hinge',hipthrust:'hinge',legcurl:'leg_curl',legcurlprone:'leg_curl',legext:'leg_ext',calf:'calf',calfseat:'calf',calfpress:'calf',shrug:'shrug',crunchc:'core',woodchop:'core',cablekick:'glut'};
 function manPat(x){return PAT[x.id]||('muscolo_'+(x.m||[]).join('_'))}
+var COMPOUND=['spinta_o','spinta_v','trazione_v','rematore','squat','hinge'];
+function manIsCompound(x){return COMPOUND.indexOf(manPat(x))>=0}
 function manCandidates(t,cur){
  var ids=planIds(t),c=day().checkin||{},zones=c.zones||[],foc=S.focus||[],sore=soreMuscles();
  var pool=LIB.filter(function(x){return x.day===t}).concat(PLANS[t].ex);
@@ -753,14 +755,15 @@ function manCandidates(t,cur){
   var risk=(x.z||[]).filter(function(z){return zones.indexOf(z)>=0});
   return{x:x,musc:musc,samePat:samePat,pref:pref,risk:risk};
  });
- if(cur)rows=rows.filter(function(r){return r.samePat||r.musc});
+ if(cur&&manIsCompound(cur))rows=rows.filter(function(r){return r.samePat});
+ if(cur&&!manIsCompound(cur))rows=rows.filter(function(r){return r.samePat||r.musc});
  return rows.sort(function(a,b){return ((b.samePat?1:0)-(a.samePat?1:0))||((b.musc?1:0)-(a.musc?1:0))||((b.pref?1:0)-(a.pref?1:0))||(a.risk.length-b.risk.length)});
 }
 function manualPanel(){
  var m=ui.manual;if(!m)return '';
  var t=S.cur,cur=m.id?exById(m.id):null,list=manCandidates(t,cur);
  var h='<section class="card" style="border-color:color-mix(in srgb,var(--volt2) 55%,transparent)"><div class="row"><h2>'+(cur?'Sostituisci '+esc(cur.n):'Aggiungi un esercizio')+'</h2><button class="x" data-act="manClose" aria-label="Chiudi">&times;</button></div>';
- h+='<p class="muted small" style="margin:6px 0 10px">'+(cur?'Prima quelli con lo stesso movimento, poi quelli sullo stesso muscolo.':'Scegli un esercizio da aggiungere al giorno '+t+'.')+'</p>';
+ h+='<p class="muted small" style="margin:6px 0 10px">'+(cur?(manIsCompound(cur)?'Per un esercizio composto si cambia solo con un altro esercizio dello stesso movimento.':'Per un isolamento puoi usare anche attrezzi diversi sullo stesso muscolo.'):'Scegli un esercizio da aggiungere al giorno '+t+'.')+'</p>';
  if(!list.length)h+='<p class="empty">Nessuna alternativa per questo esercizio. Puoi solo toglierlo, oppure aggiungerne un altro con "+ Aggiungi".</p>';
  list.slice(0,12).forEach(function(c){
   var tag=c.samePat?'stesso movimento':(c.musc?'stesso muscolo':'');
