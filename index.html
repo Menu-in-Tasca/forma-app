@@ -346,6 +346,9 @@ var LIB=[
  {id:'calfseat',n:'Calf da seduto',s:3,lo:15,hi:20,inc:2.5,z:['caviglie'],m:['polpacci'],rest:'iso',day:'C'},
  {id:'calfpress',n:'Calf alla leg press',s:3,lo:15,hi:20,inc:5,z:['caviglie'],m:['polpacci'],rest:'iso',day:'C'}
 ];
+LIB.push({id:'neutralpress',n:'Panca piana con manubri a presa neutra',s:3,lo:10,hi:12,inc:2,z:[],m:['petto'],rest:'big',day:'A'});
+LIB.push({id:'curlmach',n:'Curl alla macchina',s:3,lo:10,hi:12,inc:2.5,z:[],m:['bicipiti'],rest:'iso',day:'A'});
+LIB.push({id:'tricmach',n:'Estensione tricipiti alla macchina',s:3,lo:10,hi:12,inc:2.5,z:[],m:['tricipiti'],rest:'iso',day:'B'});
 var ALL=[];Object.keys(PLANS).forEach(function(k){PLANS[k].ex.forEach(function(e){ALL.push(e)})});
 LIB.forEach(function(e){ALL.push(e)});
 
@@ -354,7 +357,7 @@ function soreMuscles(){var c=day().checkin;return (c&&c.muscles)||[]}
 function painJoints(){var c=day().checkin;return c&&c.pain==='joint'?c.zones:[]}
 function isSore(ex){var s=soreMuscles();return !!(ex.m&&s.length&&ex.m.some(function(g){return s.indexOf(g)>=0}))}
 function planEx(type){
- var base=PLANS[type].ex.concat(((S.extras&&S.extras[type])||[]).map(function(id){return ALL.filter(function(e){return e.id===id})[0]}).filter(Boolean));
+ var sw0=(S.swaps&&S.swaps[type])||{};var base=PLANS[type].ex.map(function(e){if(sw0[e.id]===null)return null;return (sw0[e.id]&&exById(sw0[e.id]))||e}).filter(Boolean).concat(((S.extras&&S.extras[type])||[]).map(function(id){return ALL.filter(function(e){return e.id===id})[0]}).filter(Boolean));
  return base.filter(isFocus).concat(base.filter(function(e){return !isFocus(e)}));
 }
 function syncPain(c){c.muscles=c.muscles||[];if(c.zones.length)c.pain='joint';else if(c.muscles.length)c.pain='muscle';else c.pain='none'}
@@ -674,9 +677,91 @@ function exCard(ex,m,ci){
  h+='</div>';
  if(fz)h+='<p class="warnline">Salta o sostituisci: hai segnalato dolore a '+esc(ZN[fz])+'.</p>';
  else if(ex.care)h+='<p class="carenote">'+esc(ex.care)+'</p>';
- return h+'</article>';
+ return h+'<div class="row" style="margin-top:10px;gap:8px;justify-content:flex-start"><button class="btn sm ghost" data-act="manOpen" data-id="'+ex.id+'">Cambia</button><button class="btn sm ghost" data-act="manRemove" data-id="'+ex.id+'">Togli</button></div></article>';
 }
 
+function planIds(t){return planEx(t).map(function(e){return e.id})}
+function stalled(e){
+ var h=[];
+ S.sessions.forEach(function(s){(s.ex||[]).forEach(function(x){if(x.id===e.id)h.push(x)})});
+ h=h.slice(-3);
+ if(h.length<3)return false;
+ var kg=h[0].kg;
+ return h.every(function(x){return x.kg===kg})&&h.every(function(x){return Math.max.apply(null,(x.reps&&x.reps.length)?x.reps:[0])<e.hi});
+}
+function altFor(e,t,avoid){
+ var cur=planIds(t);
+ return LIB.filter(function(x){
+  return x.day===t&&x.m&&e.m&&x.m.some(function(g){return e.m.indexOf(g)>=0})&&cur.indexOf(x.id)<0&&!(x.z||[]).some(function(z){return avoid.indexOf(z)>=0});
+ })[0]||null;
+}
+function genProposal(){
+ var t=S.cur,ci=day().checkin,dis=S.dismissed||[],plan=planEx(t),zones=(ci&&ci.zones)||[];
+ for(var i=0;i<plan.length;i++){
+  var e=plan[i],hit=(e.z||[]).filter(function(z){return zones.indexOf(z)>=0});
+  if(!hit.length)continue;
+  var key='pain:'+t+':'+e.id;
+  if(dis.indexOf(key)>=0)continue;
+  var alt=altFor(e,t,zones);
+  if(alt)return{key:key,from:e,to:alt,why:'Hai segnalato dolore a '+ZN[hit[0]]+'. '+e.n+' carica quella zona: '+alt.n+' la carica meno e lavora sugli stessi muscoli.'};
+ }
+ for(var j=0;j<plan.length;j++){
+  var f=plan[j],k2='stall:'+t+':'+f.id;
+  if(dis.indexOf(k2)>=0||!stalled(f))continue;
+  var a2=altFor(f,t,zones);
+  if(a2)return{key:k2,from:f,to:a2,why:f.n+' è fermo da 3 sedute allo stesso carico senza salire di ripetizioni. Cambiare esercizio sullo stesso muscolo spesso sblocca la progressione.'};
+ }
+ return null;
+}
+function proposalCard(){
+ var t=S.cur,sw=(S.swaps&&S.swaps[t])||{},ids=Object.keys(sw),p=genProposal(),h='';
+ if(p){
+  h+='<section class="card" style="border-color:color-mix(in srgb,var(--volt2) 55%,transparent)"><p class="muted small" style="margin-bottom:6px">Proposta del coach</p><h3 style="margin-bottom:8px">Cambia '+esc(p.from.n)+' con '+esc(p.to.n)+'</h3><p class="muted small" style="margin-bottom:12px">'+esc(p.why)+'</p><div class="two"><button class="btn" data-act="propAccept">Accetta</button><button class="btn ghost" data-act="propNo">No grazie</button></div><p class="muted small" style="margin-top:10px">Puoi tornare alla scheda originale quando vuoi.</p></section>';
+ }
+ if(ids.length){
+  h+='<section class="card"><h2>Scheda modificata</h2><p class="muted small" style="margin:6px 0 12px">'+ids.map(function(f){var b=ALL.filter(function(x){return x.id===sw[f]})[0];var o=(PLANS[t].ex.filter(function(x){return x.id===f})[0]||{});return esc(o.n||f)+' → '+(sw[f]===null?'rimosso':esc(b?b.n:sw[f]))}).join('<br>')+'</p><button class="btn ghost" data-act="swapReset">Torna alla scheda originale</button></section>';
+ }
+ return h;
+}
+/* ===== Cambi manuali della scheda ===== */
+function manSlotOf(t,dispId){
+ var ex=(S.extras&&S.extras[t])||[];
+ if(ex.indexOf(dispId)>=0)return{kind:'extra'};
+ var sw=(S.swaps&&S.swaps[t])||{};
+ var o=PLANS[t].ex.filter(function(e){var v=sw[e.id];return (v===null?null:(v||e.id))===dispId})[0];
+ return o?{kind:'orig',oid:o.id}:null;
+}
+function manSetSlot(t,dispId,toId){
+ S.swaps=S.swaps||{A:{},B:{},C:{}};S.swaps[t]=S.swaps[t]||{};
+ S.extras=S.extras||{A:[],B:[],C:[]};S.extras[t]=S.extras[t]||[];
+ if(dispId==null){if(toId&&S.extras[t].indexOf(toId)<0)S.extras[t].push(toId);return}
+ var sl=manSlotOf(t,dispId);
+ if(!sl)return;
+ if(sl.kind==='extra'){var i=S.extras[t].indexOf(dispId);if(toId)S.extras[t][i]=toId;else S.extras[t].splice(i,1);return}
+ S.swaps[t][sl.oid]=toId;
+}
+function manCandidates(t,cur){
+ var ids=planIds(t),c=day().checkin||{},zones=c.zones||[],foc=S.focus||[],sore=soreMuscles();
+ var pool=LIB.filter(function(x){return x.day===t}).concat(PLANS[t].ex);
+ var seen={};
+ return pool.filter(function(x){if(seen[x.id]||ids.indexOf(x.id)>=0)return false;seen[x.id]=1;return true}).map(function(x){
+  var same=!!(cur&&cur.m&&x.m&&x.m.some(function(g){return cur.m.indexOf(g)>=0}));
+  var pref=!!(x.m&&x.m.some(function(g){return foc.indexOf(g)>=0||sore.indexOf(g)>=0}));
+  var risk=(x.z||[]).filter(function(z){return zones.indexOf(z)>=0});
+  return{x:x,same:same,pref:pref,risk:risk};
+ }).sort(function(a,b){return ((b.same?1:0)-(a.same?1:0))||((b.pref?1:0)-(a.pref?1:0))||(a.risk.length-b.risk.length)});
+}
+function manualPanel(){
+ var m=ui.manual;if(!m)return '';
+ var t=S.cur,cur=m.id?exById(m.id):null,list=manCandidates(t,cur);
+ var h='<section class="card" style="border-color:color-mix(in srgb,var(--volt2) 55%,transparent)"><div class="row"><h2>'+(cur?'Sostituisci '+esc(cur.n):'Aggiungi un esercizio')+'</h2><button class="x" data-act="manClose" aria-label="Chiudi">&times;</button></div>';
+ h+='<p class="muted small" style="margin:6px 0 10px">'+(cur?'Scegli cosa mettere al posto di questo.':'Scegli un esercizio da aggiungere al giorno '+t+'.')+' I consigliati lavorano sugli stessi muscoli o su quelli da potenziare.</p>';
+ if(!list.length)h+='<p class="empty">Non ci sono altri esercizi per questo giorno.</p>';
+ list.slice(0,12).forEach(function(c){
+  h+='<div class="entry"><div><h3 style="font-size:15px">'+esc(c.x.n)+'</h3><p class="muted small">'+c.x.s+' x '+c.x.lo+'-'+c.x.hi+(c.same?' · stesso muscolo':'')+(c.pref?' · consigliato':'')+(c.risk.length?' · carica '+esc(c.risk.map(function(z){return ZN[z]}).join(', ')):'')+'</p></div><button class="btn sm'+(c.pref?'':' ghost')+'" data-act="manPick" data-to="'+c.x.id+'">Scegli</button></div>';
+ });
+ return h+'</section>';
+}
 function viewScheda(){
  var ci=day().checkin,m=modeOf(ci),pl=PLANS[S.cur],ph=phase();
  var h='<header class="top"><div><p>Giorno '+S.cur+', '+pl.time+'</p><h1>'+esc(pl.name)+'</h1></div></header>';
@@ -689,8 +774,11 @@ function viewScheda(){
   3:'Fase 3: hai fatto 24 sedute. Ora la scheda va rivista: dimmi in chat come stai andando e cambiamo esercizi, volume e frequenza.'
  }[ph];
  h+='<div class="banner">'+phTxt+'</div>';
+ h+=proposalCard();
+ h+=manualPanel();
  h+='<button class="btn" data-act="'+(S.live?'resume':'live')+'" style="margin:4px 0 14px">'+(S.live?'Riprendi allenamento':'Inizia allenamento')+'</button>';
  h+=planEx(S.cur).map(function(e){return exCard(e,m,ci)}).join('');
+ h+='<button class="btn ghost" data-act="manAdd" style="margin:4px 0 14px">+ Aggiungi un esercizio</button>';
  h+='<p class="muted small" style="margin:12px 4px 0">Il recupero indicato è il punto di partenza: durante l\'allenamento lo adatto in base a come vanno le serie. Scalda sempre con una serie leggera sul primo esercizio.</p>';
  return h;
 }
@@ -1667,6 +1755,14 @@ function act0(a,d){
   case 'soreQ':{var cq2=ensureCi();cq2.muscles=cq2.muscles||[];var qi=cq2.muscles.indexOf(d.v);if(qi>=0)cq2.muscles.splice(qi,1);else cq2.muscles.push(d.v);syncPain(cq2);break}
   case 'soreDone':{var cdn=ensureCi();cdn.soreAsked=true;break}
   case 'soreNone':{var cno=ensureCi(),rg=recentTrained().groups;cno.muscles=(cno.muscles||[]).filter(function(g){return rg.indexOf(g)<0});syncPain(cno);cno.soreAsked=true;break}
+  case 'propAccept':{var p1=genProposal();if(p1){S.swaps=S.swaps||{A:{},B:{},C:{}};S.swaps[S.cur]=S.swaps[S.cur]||{};S.swaps[S.cur][p1.from.id]=p1.to.id;toast('Scheda aggiornata: '+p1.to.n)}break}
+  case 'propNo':{var p2=genProposal();if(p2){S.dismissed=(S.dismissed||[]).concat([p2.key])}break}
+  case 'swapReset':{if(S.swaps)S.swaps[S.cur]={};S.manual=S.manual||{A:[],B:[],C:[]};var mm0=S.manual[S.cur]||[];S.extras[S.cur]=((S.extras&&S.extras[S.cur])||[]).filter(function(id){return mm0.indexOf(id)<0});S.manual[S.cur]=[];toast('Scheda originale ripristinata');break}
+  case 'manOpen':ui.manual={id:d.id};break;
+  case 'manAdd':ui.manual={id:null};break;
+  case 'manClose':ui.manual=null;break;
+  case 'manRemove':{manSetSlot(S.cur,d.id,null);S.manual=S.manual||{A:[],B:[],C:[]};S.manual[S.cur]=(S.manual[S.cur]||[]).filter(function(id){return id!==d.id});toast('Esercizio tolto dalla scheda');break}
+  case 'manPick':{var mp=ui.manual;if(!mp)break;manSetSlot(S.cur,mp.id,d.to);S.manual=S.manual||{A:[],B:[],C:[]};S.manual[S.cur]=S.manual[S.cur]||[];if(S.manual[S.cur].indexOf(d.to)<0)S.manual[S.cur].push(d.to);ui.manual=null;var nx=ALL.filter(function(x){return x.id===d.to})[0];toast('Scheda aggiornata: '+(nx?nx.n:''));break}
   case 'recover':ui.tab='oggi';ui.pending=null;ui.sheet=false;ui.pick=null;break;
   case 'bmode':ui.bodyMode=d.v;ui.pending=null;break;
   case 'spin':spinTo(Math.round(ui.angle/180)*180+180);return;
@@ -1726,7 +1822,7 @@ document.addEventListener('click',function(e){
  var b=e.target.closest('[data-act]');
  if(!b)return;
  if(ui.noClickUntil&&Date.now()<ui.noClickUntil&&b.closest('#bodyfig'))return;
- act(b.getAttribute('data-act'),{t:b.getAttribute('data-t'),k:b.getAttribute('data-k'),v:b.getAttribute('data-v'),id:b.getAttribute('data-id'),i:b.getAttribute('data-i')});
+ act(b.getAttribute('data-act'),{t:b.getAttribute('data-t'),k:b.getAttribute('data-k'),v:b.getAttribute('data-v'),id:b.getAttribute('data-id'),i:b.getAttribute('data-i'),to:b.getAttribute('data-to')});
 });
 document.addEventListener('input',function(e){
  var el=e.target;if(!el||!el.id)return;
