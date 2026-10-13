@@ -740,25 +740,31 @@ function manSetSlot(t,dispId,toId){
  if(sl.kind==='extra'){var i=S.extras[t].indexOf(dispId);if(toId)S.extras[t][i]=toId;else S.extras[t].splice(i,1);return}
  S.swaps[t][sl.oid]=toId;
 }
+var PAT={chestpress:'spinta_o',neutralpress:'spinta_o',incline:'spinta_o',declpress:'spinta_o',fly:'croci',cablefly:'croci',shpress:'spinta_v',arnold:'spinta_v',lateral:'alzata_l',lateral1:'alzata_l',rearfly:'alzata_p',facepull:'alzata_p',latm:'trazione_v',lat1:'trazione_v',pullover:'trazione_v',pulley:'rematore',row1:'rematore',tbar:'rematore',curl2:'curl',curlmach:'curl',preacher:'curl',curl1:'curl',hammer:'curl',revcurl:'curl',wristcurl:'polsi',tri2:'push_tri',tri1:'push_tri',tricmach:'push_tri',overhead:'push_tri',kickback:'push_tri',hack:'squat',legpress:'squat',bulg:'squat',stepup:'squat',rdl:'hinge',rdl1:'hinge',hyper:'hinge',hipthrust:'hinge',legcurl:'leg_curl',legcurlprone:'leg_curl',legext:'leg_ext',calf:'calf',calfseat:'calf',calfpress:'calf',shrug:'shrug',crunchc:'core',woodchop:'core',cablekick:'glut'};
+function manPat(x){return PAT[x.id]||('muscolo_'+(x.m||[]).join('_'))}
 function manCandidates(t,cur){
  var ids=planIds(t),c=day().checkin||{},zones=c.zones||[],foc=S.focus||[],sore=soreMuscles();
  var pool=LIB.filter(function(x){return x.day===t}).concat(PLANS[t].ex);
  var seen={};
- return pool.filter(function(x){if(seen[x.id]||ids.indexOf(x.id)>=0)return false;seen[x.id]=1;return true}).map(function(x){
-  var same=!!(cur&&cur.m&&x.m&&x.m.some(function(g){return cur.m.indexOf(g)>=0}));
+ var rows=pool.filter(function(x){if(seen[x.id]||ids.indexOf(x.id)>=0)return false;seen[x.id]=1;return true}).map(function(x){
+  var musc=!!(cur&&cur.m&&x.m&&x.m.some(function(g){return cur.m.indexOf(g)>=0}));
+  var samePat=!!(cur&&manPat(cur)===manPat(x));
   var pref=!!(x.m&&x.m.some(function(g){return foc.indexOf(g)>=0||sore.indexOf(g)>=0}));
   var risk=(x.z||[]).filter(function(z){return zones.indexOf(z)>=0});
-  return{x:x,same:same,pref:pref,risk:risk};
- }).sort(function(a,b){return ((b.same?1:0)-(a.same?1:0))||((b.pref?1:0)-(a.pref?1:0))||(a.risk.length-b.risk.length)});
+  return{x:x,musc:musc,samePat:samePat,pref:pref,risk:risk};
+ });
+ if(cur)rows=rows.filter(function(r){return r.samePat||r.musc});
+ return rows.sort(function(a,b){return ((b.samePat?1:0)-(a.samePat?1:0))||((b.musc?1:0)-(a.musc?1:0))||((b.pref?1:0)-(a.pref?1:0))||(a.risk.length-b.risk.length)});
 }
 function manualPanel(){
  var m=ui.manual;if(!m)return '';
  var t=S.cur,cur=m.id?exById(m.id):null,list=manCandidates(t,cur);
  var h='<section class="card" style="border-color:color-mix(in srgb,var(--volt2) 55%,transparent)"><div class="row"><h2>'+(cur?'Sostituisci '+esc(cur.n):'Aggiungi un esercizio')+'</h2><button class="x" data-act="manClose" aria-label="Chiudi">&times;</button></div>';
- h+='<p class="muted small" style="margin:6px 0 10px">'+(cur?'Scegli cosa mettere al posto di questo.':'Scegli un esercizio da aggiungere al giorno '+t+'.')+' I consigliati lavorano sugli stessi muscoli o su quelli da potenziare.</p>';
- if(!list.length)h+='<p class="empty">Non ci sono altri esercizi per questo giorno.</p>';
+ h+='<p class="muted small" style="margin:6px 0 10px">'+(cur?'Prima quelli con lo stesso movimento, poi quelli sullo stesso muscolo.':'Scegli un esercizio da aggiungere al giorno '+t+'.')+'</p>';
+ if(!list.length)h+='<p class="empty">Nessuna alternativa per questo esercizio. Puoi solo toglierlo, oppure aggiungerne un altro con "+ Aggiungi".</p>';
  list.slice(0,12).forEach(function(c){
-  h+='<div class="entry"><div><h3 style="font-size:15px">'+esc(c.x.n)+'</h3><p class="muted small">'+c.x.s+' x '+c.x.lo+'-'+c.x.hi+(c.same?' · stesso muscolo':'')+(c.pref?' · consigliato':'')+(c.risk.length?' · carica '+esc(c.risk.map(function(z){return ZN[z]}).join(', ')):'')+'</p></div><button class="btn sm'+(c.pref?'':' ghost')+'" data-act="manPick" data-to="'+c.x.id+'">Scegli</button></div>';
+  var tag=c.samePat?'stesso movimento':(c.musc?'stesso muscolo':'');
+  h+='<div class="entry"><div><h3 style="font-size:15px">'+esc(c.x.n)+'</h3><p class="muted small">'+c.x.s+' x '+c.x.lo+'-'+c.x.hi+(tag?' · '+tag:'')+(c.pref?' · consigliato':'')+(c.risk.length?' · carica '+esc(c.risk.map(function(z){return ZN[z]}).join(', ')):'')+'</p></div><button class="btn sm'+(c.samePat?'':' ghost')+'" data-act="manPick" data-to="'+c.x.id+'">Scegli</button></div>';
  });
  return h+'</section>';
 }
